@@ -1,0 +1,5 @@
+{
+  "name": "Intellixy",
+  "description": "Sistema escolar inteligente com geração de provas por IA, cronograma e gestão de professores.",
+  "requestFramePermissions": []
+}
