@@ -8,10 +8,12 @@ export default async function handler(req: any, res: any) {
   try {
     const { subject, topic, difficultyValue, educationLevel } = req.body;
 
-    // Utilize process.env.GEMINI_API_KEY (seguro, acessado apenas no serverless da Vercel)
     const apiKey = process.env.GEMINI_API_KEY;
+
     if (!apiKey) {
-      return res.status(500).json({ message: 'GEMINI_API_KEY is not defined in environment variables.' });
+      return res.status(500).json({
+        message: 'GEMINI_API_KEY is not defined in environment variables.'
+      });
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -30,7 +32,9 @@ export default async function handler(req: any, res: any) {
       maxQuestions = 14;
     }
 
-    const levelStr = educationLevel === 'fundamental' ? 'Ensino Fundamental' : 'Ensino Médio';
+    const levelStr = educationLevel === 'fundamental'
+      ? 'Ensino Fundamental'
+      : 'Ensino Médio';
 
     const prompt = `Crie uma prova escolar seguindo RIGOROSAMENTE as especificações abaixo.
 NÃO repita as questões no final. Gere apenas UMA VEZ cada questão.
@@ -94,14 +98,27 @@ Objetivo: Criar uma prova limpa, pronta para impressão, sem repetições.`;
       model: "gemini-1.5-flash",
       contents: prompt,
     });
-    
-    let text = response.text || "";
-    // Regex para limpar seções de respostas caso a IA crie acidentalmente
-    text = text.replace(/(?:^|\n)(?:\*\*|### )?(?:Respostas do aluno|Gabarito|Folha de respostas).*/is, "");
-    
+
+    // 🔥 parsing blindado (sem mexer no prompt)
+    const text =
+      response?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      response?.text ||
+      "";
+
+    if (!text) {
+      console.error("Resposta vazia do Gemini:", response);
+      return res.status(500).json({
+        message: "Gemini não retornou conteúdo válido."
+      });
+    }
+
     return res.status(200).json({ text });
+
   } catch (error: any) {
     console.error("Vercel Serverless Error generating exam:", error);
-    return res.status(500).json({ message: error.message || "Falha ao gerar a prova. Tente novamente." });
+
+    return res.status(500).json({
+      message: error.message || "Falha ao gerar a prova. Tente novamente."
+    });
   }
 }
