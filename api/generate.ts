@@ -91,7 +91,7 @@ E NADA MAIS APÓS A ÚLTIMA QUESTÃO. NÃO GERE quadro de respostas ou seção c
 Objetivo: Criar uma prova limpa, pronta para impressão, sem repetições.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
+      model: "gemini-1.5-flash",
       contents: prompt,
     });
     
