@@ -1,39 +1,41 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { db } from '@/lib/firebase';
-import { doc, setDoc, increment } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth';
-import { format } from 'date-fns';
 
 export function AnalyticsTracker() {
   const location = useLocation();
   const { user } = useAuth();
+  const sessionLogged = useRef(false);
 
   useEffect(() => {
     if (!user) return; // Only track authenticated users
 
     const track = async () => {
       try {
-        const dateStr = format(new Date(), 'yyyy-MM-dd');
-        
-        // Track daily unique or total accesses? Let's do total interactions/pageviews
-        // daily views
-        const dailyRef = doc(db, 'analytics', `daily_${dateStr}`);
-        await setDoc(dailyRef, {
-          date: dateStr,
-          views: increment(1)
-        }, { merge: true });
+        // Track unique session/entrance
+        if (!sessionLogged.current) {
+          sessionLogged.current = true;
+          await addDoc(collection(db, 'analytics_acessos'), {
+            userId: user.id || user.email || 'unknown',
+            email: user.email || 'unknown',
+            data: serverTimestamp(),
+            tipo: 'entrada'
+          });
+        }
 
         // Track path views
         let pathName = location.pathname;
         if (pathName === '/') pathName = 'dashboard';
         else pathName = pathName.replace(/\//g, '');
         
-        const pathRef = doc(db, 'analytics', `path_${pathName}`);
-        await setDoc(pathRef, {
-          path: pathName,
-          views: increment(1)
-        }, { merge: true });
+        await addDoc(collection(db, 'analytics_abas'), {
+          userId: user.id || user.email || 'unknown',
+          email: user.email || 'unknown',
+          nomeDaAba: pathName,
+          data: serverTimestamp()
+        });
 
       } catch (err) {
         // Silently fail for analytics if permissions lack or something
@@ -46,3 +48,4 @@ export function AnalyticsTracker() {
 
   return null;
 }
+

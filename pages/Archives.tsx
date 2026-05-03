@@ -76,6 +76,11 @@ export default function Archives() {
   };
 
   const downloadPDF = async (exam: Prova) => {
+    if (!exam || !exam.conteudo) {
+      toast.error('A prova ainda não foi carregada.');
+      return;
+    }
+
     if (exam.pdfUrl) {
       setIsDownloading(exam.id);
       toast.info('Baixando PDF...');
@@ -104,9 +109,8 @@ export default function Archives() {
     toast.info('Gerando PDF, aguarde...');
 
     try {
-      // @ts-ignore
-      const html2pdfModule = await import('html2pdf.js');
-      const html2pdf = html2pdfModule.default || html2pdfModule;
+      const { default: html2canvas } = await import('html2canvas');
+      const { default: jsPDF } = await import('jspdf');
 
       // Create a temporary element to hold the markdown
       const tempDiv = document.createElement('div');
@@ -114,6 +118,7 @@ export default function Archives() {
       tempDiv.style.position = 'absolute';
       tempDiv.style.left = '-9999px';
       tempDiv.style.top = '-9999px';
+      tempDiv.style.width = '210mm'; // Fixed width for A4
       document.body.appendChild(tempDiv);
 
       const root = createRoot(tempDiv);
@@ -123,6 +128,7 @@ export default function Archives() {
             subject={exam.materia} 
             level={exam.nivelEnsino === 'medio' ? 'Ensino Médio' : 'Ensino Fundamental'}
             content={exam.conteudo} 
+            isPdf={true}
           />
         </div>
       );
@@ -130,44 +136,70 @@ export default function Archives() {
       // Wait for React to render
       await new Promise(resolve => setTimeout(resolve, 800));
 
-      const opt = {
-        margin: 10,
-        filename: `prova-${exam.materia.toLowerCase()}-${exam.tema.toLowerCase().replace(/\s+/g, '-')}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { 
-          scale: 2, 
-          useCORS: true, 
-          logging: false,
-          onclone: (clonedDoc: Document) => {
-            // CRITICAL FIX: Remove all original stylesheets in the cloned document
-            // This prevents html2canvas from parsing Tailwind's oklch() colors and crashing
-            const styles = clonedDoc.querySelectorAll('style, link[rel="stylesheet"]');
-            styles.forEach(s => s.remove());
+      let katexCss = '';
+      try {
+        const katexRes = await fetch('https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css');
+        katexCss = await katexRes.text();
+      } catch (e) {
+        console.warn('Failed to fetch katex css', e);
+      }
 
-            // Inject safe CSS for the PDF
-            const safeStyle = clonedDoc.createElement('style');
-            safeStyle.innerHTML = `
-              body { background: #ffffff !important; color: #000000 !important; }
-              #temp-pdf-container { padding: 40px; font-family: Arial, sans-serif; line-height: 1.5; width: 800px; }
-              h1 { font-size: 24px; font-weight: bold; margin-bottom: 16px; }
-              h2 { font-size: 20px; font-weight: bold; margin-top: 24px; margin-bottom: 12px; }
-              h3 { font-size: 16px; font-weight: bold; margin-top: 20px; margin-bottom: 10px; }
-              p { margin-bottom: 12px; }
-              ul { margin-bottom: 12px; padding-left: 24px; list-style-type: disc; }
-              ol { margin-bottom: 12px; padding-left: 24px; list-style-type: decimal; }
-              li { margin-bottom: 6px; }
-              strong { font-weight: bold; }
-            `;
-            clonedDoc.head.appendChild(safeStyle);
-          }
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-      };
+      const canvas = await html2canvas(tempDiv, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        onclone: (clonedDoc: Document) => {
+          // CRITICAL FIX: Remove all original stylesheets in the cloned document
+          // This prevents html2canvas from parsing Tailwind's oklch() colors and crashing
+          const styles = clonedDoc.querySelectorAll('style, link[rel="stylesheet"]');
+          styles.forEach(s => s.remove());
 
-      const worker = (html2pdf as any)().set(opt).from(tempDiv);
+          // Inject safe CSS for the PDF
+          const safeStyle = clonedDoc.createElement('style');
+          safeStyle.innerHTML = katexCss + `
+            body { background: #ffffff !important; color: #000000 !important; }
+            #temp-pdf-container { padding: 0; font-family: Arial, sans-serif; line-height: 1.5; width: 210mm; }
+            h1 { font-size: 24px; font-weight: bold; margin-bottom: 16px; }
+            h2 { font-size: 20px; font-weight: bold; margin-top: 24px; margin-bottom: 12px; }
+            h3 { font-size: 16px; font-weight: bold; margin-top: 20px; margin-bottom: 10px; }
+            p { margin-bottom: 12px; }
+            ul { margin-bottom: 12px; padding-left: 24px; list-style-type: disc; }
+            ol { margin-bottom: 12px; padding-left: 24px; list-style-type: decimal; }
+            li { margin-bottom: 6px; }
+            strong { font-weight: bold; }
+            * { word-wrap: break-word; overflow-wrap: break-word; }
+          `;
+          clonedDoc.head.appendChild(safeStyle);
+        }
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      let heightLeft = pdfHeight;
+      let position = 0;
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      // Handling pagination if content is too long for one page
+      pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft >= 0) {
+        position = heightLeft - pdfHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, position, pdfWidth, pdfHeight);
+        heightLeft -= pageHeight;
+      }
       
       // Generate blob for upload
-      const pdfBlob = await worker.outputPdf('blob');
+      const pdfBlob = pdf.output('blob');
       
       // Upload to Firebase Storage
       try {
@@ -183,7 +215,7 @@ export default function Archives() {
       }
 
       // Trigger download for the user
-      await worker.save();
+      pdf.save(`prova-${exam.materia.toLowerCase()}-${exam.tema.toLowerCase().replace(/\s+/g, '-')}.pdf`);
       toast.success('PDF baixado com sucesso!');
 
       // Cleanup
@@ -369,7 +401,7 @@ export default function Archives() {
             </DialogTitle>
           </DialogHeader>
           <div className="flex-1 overflow-y-auto p-6 bg-muted/20 flex justify-center">
-            <div id="prova-view" className="w-full max-w-[210mm] bg-white shadow-md border border-border rounded-sm">
+            <div id="prova-view" className="w-full shadow-md border border-border rounded-sm overflow-hidden">
               <ExamLayout 
                 subject={selectedExam?.materia || ''} 
                 level={selectedExam?.nivelEnsino === 'medio' ? 'Ensino Médio' : 'Ensino Fundamental'}

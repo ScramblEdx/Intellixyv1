@@ -127,5 +127,12 @@
     }
   html {
     @apply font-sans;
-    }
+  }
+}
+
+.markdown-body hr {
+  margin-top: 60px;
+  margin-bottom: 60px;
+  border: 0;
+  border-top: 1px solid #e5e7eb;
 }

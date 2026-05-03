@@ -5,27 +5,43 @@ import { LayoutDashboard, FileText, Calendar, Users, LogOut, FolderArchive, Sett
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { Logo } from '@/components/Logo';
+import { useTheme } from 'next-themes';
+import { useEffect } from 'react';
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
+
+  useEffect(() => {
+    if (user?.isAdmin && theme !== 'dark') {
+      setTheme('dark');
+    }
+  }, [user?.isAdmin, theme, setTheme]);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
-  const navItems = [
+  let navItems = [
     { name: 'Início', path: '/', icon: LayoutDashboard },
     { name: 'Criar', path: '/create-exam', icon: FileText, roles: ['teacher'] },
     { name: 'Arquivos', path: '/archives', icon: FolderArchive, roles: ['teacher'] },
-    { name: 'Agenda', path: '/schedule', icon: Calendar },
     { name: 'Ajustes', path: '/settings', icon: Settings, roles: ['teacher', 'student'] },
   ];
 
   if (user?.isAdmin) {
-    navItems.push({ name: 'Dev', path: '/dev', icon: LayoutDashboard, roles: ['student', 'teacher'] });
+    navItems = [
+      { name: 'Admin', path: '/dev', icon: LayoutDashboard, roles: [] as string[] },
+      { name: 'VCG', path: '/provas-cronogramas', icon: Calendar, roles: [] as string[] }
+    ];
+  } else if (user?.role === 'teacher') {
+    navItems.splice(3, 0, { name: 'Provas & Cronogramas', path: '/provas-cronogramas', icon: Calendar, roles: [] as string[] });
+  } else {
+    // Student or other roles (keep schedule if needed)
+    navItems.splice(3, 0, { name: 'Agenda', path: '/schedule', icon: Calendar, roles: [] as string[] });
   }
 
   return (
@@ -38,7 +54,7 @@ export default function Layout() {
         
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto pt-2">
           {navItems.map((item) => {
-            if (item.roles && user && !item.roles.includes(user.role)) return null;
+            if (item.roles && item.roles.length > 0 && user && !item.roles.includes(user.role) && !user.isAdmin) return null;
             
             const isActive = location.pathname === item.path;
             return (
@@ -61,7 +77,7 @@ export default function Layout() {
         <div className="p-6 border-t border-border bg-sidebar/50">
           <div className="mb-5 px-3 flex flex-col">
             <p className="text-sm font-semibold text-foreground line-clamp-1">{user?.name}</p>
-            <p className="text-xs text-muted-foreground font-medium capitalize mt-0.5">{user?.role === 'teacher' ? 'Professor' : 'Aluno'}</p>
+            <p className="text-xs text-muted-foreground font-medium capitalize mt-0.5">{user?.isAdmin ? 'Administrador' : user?.role === 'teacher' ? 'Professor' : 'Aluno'}</p>
           </div>
           <Button variant="destructive" className="w-full justify-start gap-3 h-12" onClick={handleLogout}>
             <LogOut className="h-4 w-4" />
@@ -99,7 +115,7 @@ export default function Layout() {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border z-30 pb-safe shadow-[0_-8px_30px_-15px_rgba(0,0,0,0.5)]">
         <div className="flex items-center justify-around px-1 py-1.5 min-h-[4.5rem]">
           {navItems.map((item) => {
-            if (item.roles && user && !item.roles.includes(user.role)) return null;
+            if (item.roles && item.roles.length > 0 && user && !item.roles.includes(user.role) && !user.isAdmin) return null;
             
             const isActive = location.pathname === item.path;
             return (

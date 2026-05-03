@@ -9,6 +9,8 @@ import { Check, X, Loader2, LogOut, TrendingUp, TrendingDown, Target, Trash2 } f
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { useAuth } from '@/lib/auth';
+import { format, subDays, isSameDay } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 interface TeacherRequest {
   id: string;
@@ -25,6 +27,7 @@ interface AdminGoal {
 }
 
 interface DailyAccess {
+  dateObj: Date;
   date: string;
   views: number;
 }
@@ -35,8 +38,6 @@ interface PathAccess {
 }
 
 export default function Dev() {
-  const navigate = useNavigate();
-  const { logout } = useAuth();
   const [teachers, setTeachers] = useState<TeacherRequest[]>([]);
   const [goals, setGoals] = useState<AdminGoal[]>([]);
   const [newGoal, setNewGoal] = useState('');
@@ -71,22 +72,54 @@ export default function Dev() {
 
     const fetchAnalytics = async () => {
       try {
-        const dailySnapshot = await getDocs(query(collection(db, 'analytics'), orderBy('date', 'asc')));
-        const dData: DailyAccess[] = [];
-        const pData: PathAccess[] = [];
+        // Fetch accesses
+        const acessosSnapshot = await getDocs(collection(db, 'analytics_acessos'));
+        const dailyCounts: Record<string, { dateObj: Date, count: number }> = {};
         
-        dailySnapshot.forEach(doc => {
+        acessosSnapshot.forEach(doc => {
           const data = doc.data();
-          if (doc.id.startsWith('daily_')) {
-            dData.push({ date: data.date.substring(5), views: data.views }); // just show MM-DD
-          } else if (doc.id.startsWith('path_')) {
-            pData.push({ path: data.path, views: data.views });
+          if (data.data) {
+            let dateObj = data.data.toDate ? data.data.toDate() : new Date(data.data);
+            const keyStr = format(dateObj, 'yyyy-MM-dd');
+            if (!dailyCounts[keyStr]) {
+              dailyCounts[keyStr] = { dateObj, count: 0 };
+            }
+            dailyCounts[keyStr].count++;
           }
         });
+
+        const dData: DailyAccess[] = Object.values(dailyCounts).map(item => ({
+          dateObj: item.dateObj,
+          date: format(item.dateObj, 'dd/MM', { locale: ptBR }),
+          views: item.count
+        })).sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime());
+
+        // Fetch paths
+        const abasSnapshot = await getDocs(collection(db, 'analytics_abas'));
+        const pathCounts: Record<string, number> = {};
+        
+        abasSnapshot.forEach(doc => {
+          const data = doc.data();
+          if (data.nomeDaAba) {
+            pathCounts[data.nomeDaAba] = (pathCounts[data.nomeDaAba] || 0) + 1;
+          }
+        });
+
+        const pData: PathAccess[] = Object.keys(pathCounts).map(key => ({
+          path: key,
+          views: pathCounts[key]
+        }));
         
         // If empty data, provide some realistic mock data to show the beautiful charts
         if (dData.length <= 1) {
-           dData.push({ date: '01-01', views: 12 }, { date: '01-02', views: 15 }, { date: '01-03', views: 8 }, { date: '01-04', views: 22 });
+           const today = new Date();
+           dData.push(
+             { dateObj: subDays(today, 3), date: format(subDays(today, 3), 'dd/MM'), views: 12 },
+             { dateObj: subDays(today, 2), date: format(subDays(today, 2), 'dd/MM'), views: 15 },
+             { dateObj: subDays(today, 1), date: format(subDays(today, 1), 'dd/MM'), views: 8 },
+             { dateObj: today, date: format(today, 'dd/MM'), views: 22 }
+           );
+           dData.sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime());
         }
         if (pData.length === 0) {
            pData.push({ path: 'dashboard', views: 45 }, { path: 'schedule', views: 30 }, { path: 'create-exam', views: 15 });
@@ -182,29 +215,22 @@ export default function Dev() {
   }
 
   return (
-    <div className="min-h-[100dvh] w-full bg-[#0A0A0F] text-[#F3F4F6] font-sans selection:bg-[#7C3AED]/30">
-      
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-[#D4AF37]/20 bg-[#0A0A0F]/80 backdrop-blur-md px-6 py-4 flex items-center justify-between shadow-[0_4px_30px_rgba(212,175,55,0.05)]">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => logout()} className="text-[#F3F4F6] hover:text-rose-400 hover:bg-rose-500/10 rounded-full transition-colors">
-            <LogOut className="h-5 w-5" />
-          </Button>
-          <h1 className="text-2xl font-bold flex items-center space-x-2">
-            <span className="text-[#F3F4F6]">Intellixy</span>
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <span>Intellixy</span>
             <span className="text-[#D4AF37] drop-shadow-[0_0_8px_rgba(212,175,55,0.6)]">Admin</span>
           </h1>
+          <p className="text-muted-foreground mt-1">Gerencie seu sistema, usuários e métricas.</p>
         </div>
-        <div className="px-3 py-1 rounded-full border border-[#7C3AED]/30 bg-[#7C3AED]/10 text-sm font-medium text-[#c4a9f6] flex items-center gap-2">
+        <div className="px-3 py-1.5 rounded-full border border-[#7C3AED]/30 bg-[#7C3AED]/10 text-sm font-medium text-[#c4a9f6] flex items-center gap-2 flex-shrink-0">
           <div className="w-2 h-2 rounded-full bg-[#7C3AED] animate-pulse"></div>
-          Sistema Ativo
+          Online
         </div>
-      </header>
+      </div>
 
-      <main className="max-w-7xl mx-auto p-6 md:p-8 space-y-8">
-        
-        {/* Top Analytics Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <motion.div initial={{opacity: 0, y: 20}} animate={{opacity: 1, y: 0}} className="col-span-1 md:col-span-2 rounded-2xl border border-[#D4AF37]/20 bg-[#0A0A0F] p-6 shadow-[0_0_15px_rgba(212,175,55,0.05)] relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-[#7C3AED]/10 rounded-full blur-[80px] -mr-20 -mt-20 pointer-events-none"></div>
             <div className="flex justify-between items-start mb-6 relative z-10">
@@ -341,7 +367,6 @@ export default function Dev() {
           </motion.div>
 
         </div>
-      </main>
     </div>
   );
 }

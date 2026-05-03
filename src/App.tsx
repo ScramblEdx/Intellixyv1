@@ -19,7 +19,9 @@ import Dev from '@/pages/Dev';
 
 import PendingApproval from '@/pages/PendingApproval';
 
-function ProtectedRoute({children, allowedRoles, adminOnly}: {children: React.ReactNode, allowedRoles?: string[], adminOnly?: boolean}) {
+import ExamsAndSchedules from '@/pages/ExamsAndSchedules';
+
+function ProtectedRoute({children, allowedRoles, adminOnly, adminAllowed}: {children: React.ReactNode, allowedRoles?: string[], adminOnly?: boolean, adminAllowed?: boolean}) {
   const {user} = useAuth();
   
   if (!user) {
@@ -34,11 +36,11 @@ function ProtectedRoute({children, allowedRoles, adminOnly}: {children: React.Re
     return <Navigate to="/" replace />;
   }
 
-  if (user.isAdmin && !adminOnly) {
-    return <Navigate to="/dev" replace />;
-  }
-
   if (allowedRoles && !allowedRoles.includes(user.role)) {
+    // If admin is allowed, they bypass the role check
+    if (user.isAdmin && adminAllowed) {
+      return <>{children}</>;
+    }
     return <Navigate to="/" replace />;
   }
 
@@ -53,14 +55,13 @@ export default function App() {
           <AnalyticsTracker />
           <Routes>
             <Route path="/login" element={<Login />} />
-            <Route path="/dev" element={
-              <ProtectedRoute adminOnly={true}>
-                <Dev />
-              </ProtectedRoute>
-            } />
-            
             <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
               <Route index element={<Dashboard />} />
+              <Route path="dev" element={
+                <ProtectedRoute adminOnly={true}>
+                  <Dev />
+                </ProtectedRoute>
+              } />
               <Route path="create-exam" element={
                 <ProtectedRoute allowedRoles={['teacher']}>
                   <CreateExam />
@@ -69,6 +70,11 @@ export default function App() {
               <Route path="archives" element={
                 <ProtectedRoute allowedRoles={['teacher']}>
                   <Archives />
+                </ProtectedRoute>
+              } />
+              <Route path="provas-cronogramas" element={
+                <ProtectedRoute allowedRoles={['teacher']} adminAllowed={true}>
+                  <ExamsAndSchedules />
                 </ProtectedRoute>
               } />
               <Route path="schedule" element={<Schedule />} />
