@@ -1,5 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
-
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method Not Allowed' });
@@ -9,11 +7,11 @@ export default async function handler(req: any, res: any) {
     const { content } = req.body;
 
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ message: 'GEMINI_API_KEY is not defined in environment variables.' });
-    }
+    console.log("API KEY EXISTS (fix-exam):", !!apiKey);
 
-    const ai = new GoogleGenAI({ apiKey });
+    if (!apiKey) {
+      return res.status(500).json({ message: 'API key não configurada no servidor' });
+    }
 
     const prompt = `Analise a prova ou conteúdo educacional abaixo e faça correções de formatação, ortografia e consistência.
 Mantenha a mesma quantidade de questões e alternativas. Apenas melhore a qualidade visual e corrija erros.
@@ -27,12 +25,38 @@ ${content}
 
 Escreva abaixo a versão corrigida (e apenas a versão corrigida, sem introduções):`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
-      contents: prompt,
+    console.log("Chamando Gemini (fix-exam)...");
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: prompt }
+            ]
+          }
+        ]
+      })
     });
+
+    console.log("Status resposta (fix-exam):", response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("Gemini API Error details (fix-exam):", errorData);
+      return res.status(response.status).json({ 
+        message: `Erro na API do Gemini: ${response.statusText}`,
+        details: errorData 
+      });
+    }
+
+    const data = await response.json();
     
-    let text = response.text || "";
+    let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
     text = text.replace(/(?:^|\n)(?:\*\*|### )?(?:Respostas do aluno|Gabarito|Folha de respostas).*/is, "");
     
     return res.status(200).json({ text });

@@ -71,11 +71,67 @@ export default function CreateExam() {
       return;
     }
 
+    // CHECK PLAN LIMITS
+    const today = new Date().toISOString().split('T')[0];
+    let ultimoResetFormat = user.ultimoReset;
+    try {
+       ultimoResetFormat = new Date(user.ultimoReset).toISOString().split('T')[0];
+    } catch(e) {}
+    
+    let provasMes = user.provasGeradasMes || 0;
+    let provasDia = user.provasGeradasDia || 0;
+
+    // Se mudou o mês
+    if (new Date(user.ultimoReset).getMonth() !== new Date().getMonth()) {
+       provasMes = 0;
+    }
+    // Se mudou o dia
+    if (ultimoResetFormat !== today) {
+       provasDia = 0;
+    }
+
+    const { plan } = user;
+    let limitReached = false;
+    let limitMessage = '';
+
+    if (plan === 'free') {
+      if (provasMes >= 2) {
+        limitReached = true;
+        limitMessage = 'Você atingiu o limite de 2 provas por mês do plano Grátis.';
+      }
+    } else if (plan === 'pago') {
+      if (provasMes >= 5) {
+        limitReached = true;
+        limitMessage = 'Você atingiu o limite de 5 provas por mês do plano Profissional.';
+      }
+    } else if (plan === 'deluxe') {
+      if (provasMes >= 10) {
+        limitReached = true;
+        limitMessage = 'Você atingiu o limite de 10 provas por mês do plano Deluxe.';
+      }
+    }
+
+    if (limitReached) {
+      toast.error('Você atingiu o limite do seu plano.', {
+        description: limitMessage,
+        duration: 8000,
+      });
+      return;
+    }
+
     setGeneratedExam(''); // Limpa o conteúdo antigo
     setCurrentExamId(null);
     setIsGenerating(true);
     
     try {
+      // Atualiza os contadores no banco ANTES para evitar duplicidade rápida
+      const userRef = doc(db, 'users', user.id);
+      await updateDoc(userRef, {
+        provasGeradasDia: provasDia + 1,
+        provasGeradasMes: provasMes + 1,
+        ultimoReset: new Date().toISOString()
+      });
+
       // Mapeia 1, 2, 3 para 33, 66, 100 para a API do Gemini
       const difficultyValue = difficulty === 1 ? 33 : difficulty === 2 ? 66 : 100;
       

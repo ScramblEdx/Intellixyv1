@@ -1,5 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
-
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method Not Allowed' });
@@ -9,14 +7,11 @@ export default async function handler(req: any, res: any) {
     const { subject, topic, difficultyValue, educationLevel } = req.body;
 
     const apiKey = process.env.GEMINI_API_KEY;
-
+    console.log("API KEY EXISTS:", !!apiKey);
+    
     if (!apiKey) {
-      return res.status(500).json({
-        message: 'GEMINI_API_KEY is not defined in environment variables.'
-      });
+      return res.status(500).json({ message: 'API key não configurada no servidor' });
     }
-
-    const ai = new GoogleGenAI({ apiKey });
 
     let difficultyStr = "Médio";
     let minQuestions = 10;
@@ -32,9 +27,13 @@ export default async function handler(req: any, res: any) {
       maxQuestions = 14;
     }
 
-    const levelStr = educationLevel === 'fundamental'
-      ? 'Ensino Fundamental'
-      : 'Ensino Médio';
+    const levelStr = educationLevel === 'fundamental' ? 'Ensino Fundamental' : 'Ensino Médio';
+
+    let pegadinhaInstruction = "";
+    if (difficultyStr === "Médio" || difficultyStr === "Difícil") {
+      pegadinhaInstruction = `
+- PEGADINHAS (IMPORTANTE): Como a dificuldade é ${difficultyStr}, inclua entre 20% a 30% das questões com pegadinhas inteligentes, mas com clareza. Use perguntas como "Qual alternativa NÃO está correta?", alternativas muito parecidas com pequenos detalhes alterados, ou erros comuns de estudantes. Destaque palavras-chave como "NÃO" ou "INCORRETO" em maiúsculo, testando a atenção e entendimento real sem confundir com linguagem difícil. Equilibre bem com questões diretas.`;
+    }
 
     const prompt = `Crie uma prova escolar seguindo RIGOROSAMENTE as especificações abaixo.
 NÃO repita as questões no final. Gere apenas UMA VEZ cada questão.
@@ -53,7 +52,7 @@ Matéria: ${subject}
 - A prova deve focar no tema solicitado.
 - LINGUAGEM: Use linguagem simples, clara, natural e direta (como um professor de escola real). EVITE palavras rebuscadas ou excessivamente formais (como "concomitantemente", "avassaladoramente", "intrínseco", etc).
 - TAMANHO: As questões devem ser curtas e objetivas (máximo de 3 a 5 linhas por enunciado). SEM enrolação. As alternativas também devem ser curtas e diretas, sem explicações longas.
-- DIFICULDADE: A dificuldade (${difficultyStr}) deve vir da exigência do raciocínio lógico e do conhecimento da matéria, NÃO de textos longos ou interpretação de texto complicada. O aluno deve entender o problema rapidamente. Foco na matéria, não na interpretação de vocabulário difícil.
+- DIFICULDADE: A dificuldade (${difficultyStr}) deve vir da exigência do raciocínio lógico e do conhecimento da matéria, NÃO de textos longos ou interpretação de texto complicada. O aluno deve entender o problema rapidamente. Foco na matéria, não na interpretação de vocabulário difícil.${pegadinhaInstruction}
 
 3. Formato das questões de Múltipla Escolha:
 - Cada questão DEVE ter o enunciado e logo abaixo as 4 alternativas (A, B, C, D).
@@ -94,31 +93,44 @@ D) Alternativa
 E NADA MAIS APÓS A ÚLTIMA QUESTÃO. NÃO GERE quadro de respostas ou seção com "Respostas do aluno".
 Objetivo: Criar uma prova limpa, pronta para impressão, sem repetições.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-1.5-flash",
-      contents: prompt,
+    console.log("Chamando Gemini...");
+    
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: prompt }
+            ]
+          }
+        ]
+      })
     });
 
-    // 🔥 parsing blindado (sem mexer no prompt)
-    const text =
-      response?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      response?.text ||
-      "";
+    console.log("Status resposta:", response.status);
 
-    if (!text) {
-      console.error("Resposta vazia do Gemini:", response);
-      return res.status(500).json({
-        message: "Gemini não retornou conteúdo válido."
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("Gemini API Error details:", errorData);
+      return res.status(response.status).json({ 
+        message: `Erro na API do Gemini: ${response.statusText}`,
+        details: errorData 
       });
     }
 
+    const data = await response.json();
+    
+    let text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    // Regex para limpar seções de respostas caso a IA crie acidentalmente
+    text = text.replace(/(?:^|\n)(?:\*\*|### )?(?:Respostas do aluno|Gabarito|Folha de respostas).*/is, "");
+    
     return res.status(200).json({ text });
-
   } catch (error: any) {
     console.error("Vercel Serverless Error generating exam:", error);
-
-    return res.status(500).json({
-      message: error.message || "Falha ao gerar a prova. Tente novamente."
-    });
+    return res.status(500).json({ message: error.message || "Falha ao gerar a prova. Tente novamente." });
   }
 }

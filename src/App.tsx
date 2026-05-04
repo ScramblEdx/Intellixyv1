@@ -12,6 +12,8 @@ import Layout from '@/components/Layout';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import CreateExam from '@/pages/CreateExam';
+import Plans from '@/pages/Plans';
+import AdminPanel from '@/pages/AdminPanel';
 import Schedule from '@/pages/Schedule';
 import Archives from '@/pages/Archives';
 import Settings from '@/pages/Settings';
@@ -65,6 +67,16 @@ export default function App() {
               <Route path="create-exam" element={
                 <ProtectedRoute allowedRoles={['teacher']}>
                   <CreateExam />
+                </ProtectedRoute>
+              } />
+              <Route path="plans" element={
+                <ProtectedRoute allowedRoles={['teacher']}>
+                  <Plans />
+                </ProtectedRoute>
+              } />
+              <Route path="admin" element={
+                <ProtectedRoute adminOnly={true}>
+                  <AdminPanel />
                 </ProtectedRoute>
               } />
               <Route path="archives" element={

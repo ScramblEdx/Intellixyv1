@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
-import { LayoutDashboard, FileText, Calendar, Users, LogOut, FolderArchive, Settings } from 'lucide-react';
+import { LayoutDashboard, FileText, Calendar, Users, LogOut, FolderArchive, Settings, Crown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { Logo } from '@/components/Logo';
@@ -20,8 +20,10 @@ export default function Layout() {
     }
   }, [user?.isAdmin, theme, setTheme]);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    setTheme('light');
+    localStorage.setItem('theme', 'light');
+    await logout();
     navigate('/login');
   };
 
@@ -29,12 +31,14 @@ export default function Layout() {
     { name: 'Início', path: '/', icon: LayoutDashboard },
     { name: 'Criar', path: '/create-exam', icon: FileText, roles: ['teacher'] },
     { name: 'Arquivos', path: '/archives', icon: FolderArchive, roles: ['teacher'] },
+    { name: 'Planos', path: '/plans', icon: Crown, roles: ['teacher'] },
     { name: 'Ajustes', path: '/settings', icon: Settings, roles: ['teacher', 'student'] },
   ];
 
   if (user?.isAdmin) {
     navItems = [
-      { name: 'Admin', path: '/dev', icon: LayoutDashboard, roles: [] as string[] },
+      { name: 'Painel Admin', path: '/admin', icon: Users, roles: [] as string[] },
+      { name: 'Admin Dev', path: '/dev', icon: LayoutDashboard, roles: [] as string[] },
       { name: 'VCG', path: '/provas-cronogramas', icon: Calendar, roles: [] as string[] }
     ];
   } else if (user?.role === 'teacher') {
@@ -100,10 +104,10 @@ export default function Layout() {
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
-              initial={{ opacity: 0, y: 15, scale: 0.98 }}
+              initial={{ opacity: 0, y: 15, scale: 0.99 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -15, scale: 0.98 }}
-              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              exit={{ opacity: 0, y: -10, scale: 0.99 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
             >
               <Outlet />
             </motion.div>
